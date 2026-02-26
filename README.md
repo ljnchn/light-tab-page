@@ -43,6 +43,30 @@ pnpm install
 pnpm run dev
 ```
 
+## 发布
+
+项目使用 GitHub Actions 自动构建和发布，推送版本 tag 即可触发：
+
+```bash
+# 更新 package.json 中的 version 后
+git add .
+git commit -m "release: v1.6.0"
+git tag v1.6.0
+git push origin main --tags
+```
+
+工作流会自动完成：
+1. 类型检查 + 构建
+2. 将 `dist/` 打包为 zip
+3. 上传到 GitHub Releases
+
+如需自动发布到应用商店，在仓库 **Settings > Secrets** 中配置以下密钥后，取消 `.github/workflows/release.yml` 中对应步骤的注释：
+
+| 商店 | 所需 Secrets |
+|------|-------------|
+| Chrome Web Store | `CHROME_EXTENSION_ID`, `CHROME_CLIENT_ID`, `CHROME_CLIENT_SECRET`, `CHROME_REFRESH_TOKEN` |
+| Firefox Add-ons | `FIREFOX_JWT_ISSUER`, `FIREFOX_JWT_SECRET` |
+
 ## 赞助
 本项目的 CDN 加速及安全防护由腾讯 EdgeOne 赞助。
 
