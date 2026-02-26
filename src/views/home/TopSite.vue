@@ -9,7 +9,6 @@
               :key="item.url"
               :class="['top-site-item', { hide: data.currentDrag === toGlobalIndex(pageIdx, localIdx) }]"
               :title="item.title"
-              @contextmenu.prevent.stop="openEditModal(toGlobalIndex(pageIdx, localIdx))"
             >
               <icon
                 :class="['top-site-icon', { 'shake-active': data.shake }]"
@@ -19,9 +18,7 @@
                 :size="topSiteSetting.iconSize"
                 draggable="true"
                 @click="openPage(item.url)"
-                @mousedown="onIconMouseDown($event)"
-                @mouseup="onIconMouseUp"
-                @mouseleave="onIconMouseUp"
+                @contextmenu.prevent.stop="openEditStatus"
                 @dragstart="onDragIcon(DragType.start, toGlobalIndex(pageIdx, localIdx))"
                 @dragenter="onDragIcon(DragType.enter, toGlobalIndex(pageIdx, localIdx))"
                 @dragover.prevent
@@ -35,6 +32,16 @@
                     class="bubble-delete"
                     @click.stop="topSiteStore.deleteTopSite(toGlobalIndex(pageIdx, localIdx))"
                   ></sup>
+                </transition>
+
+                <transition name="scale">
+                  <div
+                    v-show="data.editStatus"
+                    class="bubble-edit"
+                    @click.stop="onClickEdit(toGlobalIndex(pageIdx, localIdx))"
+                  >
+                    <edit-outlined />
+                  </div>
                 </transition>
               </icon>
 
@@ -84,6 +91,9 @@
       :width="500"
       centered
       destroy-on-close
+      ok-text="保存"
+      cancel-text="取消"
+      @ok="onSaveTopSite"
     >
       <a-form :model="topSite" :label-col="{ span: 6 }" :wrapper-col="{ span: 16 }">
         <a-form-item label="网站URL" v-bind="validateInfos.url">
@@ -110,18 +120,6 @@
           <a-input v-model:value="topSite.icon" placeholder="图标URL" />
         </a-form-item>
       </a-form>
-
-      <template #footer>
-        <a-popconfirm
-          v-if="data.editingIndex >= 0"
-          :title="t('topsite.deleteConfirm')"
-          @confirm="onDeleteTopSite"
-        >
-          <a-button type="text" danger>{{ t("topsite.delete") }}</a-button>
-        </a-popconfirm>
-        <a-button @click="data.showModal = false">取消</a-button>
-        <a-button type="primary" @click="onSaveTopSite">保存</a-button>
-      </template>
     </a-modal>
   </div>
 </template>
@@ -133,7 +131,7 @@ import { OpenPageTarget } from "@/types/search"
 import { useSettingStore, useTopSiteStore } from "@/store"
 import { useI18n } from "vue-i18n"
 import { Form } from "ant-design-vue"
-import { LoadingOutlined } from "@ant-design/icons-vue"
+import { LoadingOutlined, EditOutlined } from "@ant-design/icons-vue"
 import { getFavicon } from "@/plugins/extension"
 import { storeToRefs } from "pinia"
 
@@ -188,26 +186,7 @@ function toGlobalIndex(pageIdx: number, localIdx: number): number {
   return pageIdx * pageSize.value + localIdx
 }
 
-// --- Long-press for shake mode ---
-
-let longPressTimer: ReturnType<typeof setTimeout> | null = null
-let longPressTriggered = false
-
-function onIconMouseDown(e: MouseEvent) {
-  if (e.button !== 0) return
-  longPressTriggered = false
-  longPressTimer = setTimeout(() => {
-    longPressTriggered = true
-    openEditStatus()
-  }, 500)
-}
-
-function onIconMouseUp() {
-  if (longPressTimer) {
-    clearTimeout(longPressTimer)
-    longPressTimer = null
-  }
-}
+// --- Shake mode (right-click) ---
 
 function openEditStatus() {
   data.shake = true
@@ -215,13 +194,22 @@ function openEditStatus() {
   document.body.addEventListener("click", closeEditStatus)
 }
 
+function exitEditStatus() {
+  data.shake = false
+  data.editStatus = false
+  document.body.removeEventListener("click", closeEditStatus)
+}
+
 function closeEditStatus(e: Event) {
   if (data.editStatus) {
     e.stopPropagation()
-    data.shake = false
-    data.editStatus = false
-    document.body.removeEventListener("click", closeEditStatus)
+    exitEditStatus()
   }
+}
+
+function onClickEdit(globalIdx: number) {
+  exitEditStatus()
+  openEditModal(globalIdx)
 }
 
 // --- Wheel paging ---
@@ -263,10 +251,6 @@ const rules = reactive({
 const { validate, resetFields, validateInfos } = Form.useForm(topSite, rules)
 
 function openPage(url: string) {
-  if (longPressTriggered) {
-    longPressTriggered = false
-    return
-  }
   window.open(url, OpenPageTarget.Blank)
 }
 
@@ -277,8 +261,6 @@ function openAddModal() {
 }
 
 function openEditModal(globalIdx: number) {
-  if (data.editStatus) return
-
   const item = topSiteStore.topSites[globalIdx]
   if (!item) return
 
@@ -326,13 +308,6 @@ async function onSaveTopSite() {
   } catch {}
 }
 
-function onDeleteTopSite() {
-  if (data.editingIndex >= 0) {
-    topSiteStore.deleteTopSite(data.editingIndex)
-    data.showModal = false
-  }
-}
-
 // --- Auto-fetch title ---
 
 async function fetchPageTitle(url: string): Promise<string | null> {
@@ -374,11 +349,8 @@ async function onUrlBlur() {
 function onDragIcon(type: DragType, globalIdx: number) {
   switch (type) {
     case DragType.start:
-      if (longPressTimer) {
-        clearTimeout(longPressTimer)
-        longPressTimer = null
-      }
       data.currentDrag = globalIdx
+      openEditStatus()
       return
     case DragType.enter:
       if (data.currentDrag === globalIdx) return
@@ -467,6 +439,10 @@ onBeforeMount(init)
 
       &.shake-active {
         animation: shake 0.3s infinite;
+
+        &:hover .bubble-edit {
+          opacity: 1;
+        }
       }
 
       .icon-board {
@@ -493,6 +469,28 @@ onBeforeMount(init)
         &::before {
           content: "X";
         }
+      }
+
+      .bubble-edit {
+        width: 24px;
+        height: 24px;
+
+        position: absolute;
+        inset: 0;
+        margin: auto;
+        z-index: 2;
+
+        display: flex;
+        align-items: center;
+        justify-content: center;
+
+        background-color: rgba(0, 0, 0, 0.55);
+        color: #fff;
+        border-radius: 50%;
+        font-size: 12px;
+        opacity: 0;
+        transition: opacity 0.2s ease;
+        cursor: pointer;
       }
     }
 
