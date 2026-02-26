@@ -12,19 +12,30 @@
               @contextmenu.prevent.stop="openEditModal(toGlobalIndex(pageIdx, localIdx))"
             >
               <icon
-                class="top-site-icon"
+                :class="['top-site-icon', { 'shake-active': data.shake }]"
                 :text-icon="item.textIcon"
                 :src="item.icon"
                 :title="item.title"
                 :size="topSiteSetting.iconSize"
                 draggable="true"
                 @click="openPage(item.url)"
+                @mousedown="onIconMouseDown($event)"
+                @mouseup="onIconMouseUp"
+                @mouseleave="onIconMouseUp"
                 @dragstart="onDragIcon(DragType.start, toGlobalIndex(pageIdx, localIdx))"
                 @dragenter="onDragIcon(DragType.enter, toGlobalIndex(pageIdx, localIdx))"
                 @dragover.prevent
                 @dragend="onDragIcon(DragType.end, toGlobalIndex(pageIdx, localIdx))"
               >
                 <div class="icon-board"></div>
+
+                <transition name="scale">
+                  <sup
+                    v-show="data.editStatus"
+                    class="bubble-delete"
+                    @click.stop="topSiteStore.deleteTopSite(toGlobalIndex(pageIdx, localIdx))"
+                  ></sup>
+                </transition>
               </icon>
 
               <div class="icon-title">
@@ -34,6 +45,7 @@
 
             <li
               v-if="pageIdx === pages.length - 1"
+              v-show="!data.shake"
               key="__add_button__"
               class="top-site-item"
               :title="t('topsite.add')"
@@ -100,17 +112,15 @@
       </a-form>
 
       <template #footer>
-        <div class="modal-footer">
-          <div>
-            <a-button v-if="data.editingIndex >= 0" danger @click="onDeleteTopSite">
-              {{ t("topsite.delete") }}
-            </a-button>
-          </div>
-          <div>
-            <a-button @click="data.showModal = false">取消</a-button>
-            <a-button type="primary" @click="onSaveTopSite">保存</a-button>
-          </div>
-        </div>
+        <a-popconfirm
+          v-if="data.editingIndex >= 0"
+          :title="t('topsite.deleteConfirm')"
+          @confirm="onDeleteTopSite"
+        >
+          <a-button type="text" danger>{{ t("topsite.delete") }}</a-button>
+        </a-popconfirm>
+        <a-button @click="data.showModal = false">取消</a-button>
+        <a-button type="primary" @click="onSaveTopSite">保存</a-button>
       </template>
     </a-modal>
   </div>
@@ -154,6 +164,8 @@ const totalPages = computed(() => pages.value.length)
 const data = reactive({
   currentPage: 0,
   currentDrag: -1,
+  shake: false,
+  editStatus: false,
   showModal: false,
   editingIndex: -1,
   fetchingTitle: false
@@ -176,6 +188,44 @@ function toGlobalIndex(pageIdx: number, localIdx: number): number {
   return pageIdx * pageSize.value + localIdx
 }
 
+// --- Long-press for shake mode ---
+
+let longPressTimer: ReturnType<typeof setTimeout> | null = null
+let longPressTriggered = false
+
+function onIconMouseDown(e: MouseEvent) {
+  if (e.button !== 0) return
+  longPressTriggered = false
+  longPressTimer = setTimeout(() => {
+    longPressTriggered = true
+    openEditStatus()
+  }, 500)
+}
+
+function onIconMouseUp() {
+  if (longPressTimer) {
+    clearTimeout(longPressTimer)
+    longPressTimer = null
+  }
+}
+
+function openEditStatus() {
+  data.shake = true
+  data.editStatus = true
+  document.body.addEventListener("click", closeEditStatus)
+}
+
+function closeEditStatus(e: Event) {
+  if (data.editStatus) {
+    e.stopPropagation()
+    data.shake = false
+    data.editStatus = false
+    document.body.removeEventListener("click", closeEditStatus)
+  }
+}
+
+// --- Wheel paging ---
+
 let lastWheelTime = 0
 function onWheel(e: WheelEvent) {
   if (totalPages.value <= 1) return
@@ -194,6 +244,8 @@ function onWheel(e: WheelEvent) {
   }
 }
 
+// --- Form ---
+
 const topSite = reactive({
   title: "",
   url: "",
@@ -211,6 +263,10 @@ const rules = reactive({
 const { validate, resetFields, validateInfos } = Form.useForm(topSite, rules)
 
 function openPage(url: string) {
+  if (longPressTriggered) {
+    longPressTriggered = false
+    return
+  }
   window.open(url, OpenPageTarget.Blank)
 }
 
@@ -221,6 +277,8 @@ function openAddModal() {
 }
 
 function openEditModal(globalIdx: number) {
+  if (data.editStatus) return
+
   const item = topSiteStore.topSites[globalIdx]
   if (!item) return
 
@@ -275,6 +333,8 @@ function onDeleteTopSite() {
   }
 }
 
+// --- Auto-fetch title ---
+
 async function fetchPageTitle(url: string): Promise<string | null> {
   try {
     const resp = await fetch(url, {
@@ -309,9 +369,15 @@ async function onUrlBlur() {
   }
 }
 
+// --- Drag ---
+
 function onDragIcon(type: DragType, globalIdx: number) {
   switch (type) {
     case DragType.start:
+      if (longPressTimer) {
+        clearTimeout(longPressTimer)
+        longPressTimer = null
+      }
       data.currentDrag = globalIdx
       return
     case DragType.enter:
@@ -329,6 +395,8 @@ function onDragIcon(type: DragType, globalIdx: number) {
       return
   }
 }
+
+// --- Init ---
 
 async function init() {
   topSiteStore.refreshIconUrls()
@@ -397,11 +465,34 @@ onBeforeMount(init)
       height: @board-size;
       cursor: pointer;
 
+      &.shake-active {
+        animation: shake 0.3s infinite;
+      }
+
       .icon-board {
         height: 100%;
         background-color: @board-color;
         opacity: @board-opacity;
         border-radius: @board-radius;
+      }
+
+      .bubble-delete {
+        width: 18px;
+        height: 18px;
+
+        position: absolute;
+        top: -9px;
+        right: -9px;
+        color: #f5f5f5;
+        background-color: #f5222d;
+        text-align: center;
+        line-height: 18px;
+        font-size: 12px;
+        border-radius: 50%;
+
+        &::before {
+          content: "X";
+        }
       }
     }
 
@@ -438,12 +529,6 @@ onBeforeMount(init)
       }
     }
   }
-}
-
-.modal-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
 }
 
 [data-theme="dark"] {

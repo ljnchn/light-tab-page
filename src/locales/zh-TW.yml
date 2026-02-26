@@ -59,6 +59,7 @@ topsite:
   add: "添加導航"
   edit: "編輯導航"
   delete: "刪除"
+  deleteConfirm: "確定刪除該導航？"
 
 other:
   setting: "其他設置"

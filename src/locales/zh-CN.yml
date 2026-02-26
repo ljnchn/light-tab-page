@@ -59,6 +59,7 @@ topsite:
   add: "添加导航"
   edit: "编辑导航"
   delete: "删除"
+  deleteConfirm: "确定删除该导航？"
 
 other:
   setting: "其他设置"

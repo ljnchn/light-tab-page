@@ -59,6 +59,7 @@ topsite:
   add: "Add topsite"
   edit: "Edit topsite"
   delete: "Delete"
+  deleteConfirm: "Delete this topsite?"
 
 other:
   setting: "Other Setting"
