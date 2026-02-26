@@ -1,63 +1,79 @@
 <template>
   <div class="top-site-warp">
-    <transition-group class="top-site-grid" name="flip-list" tag="ul">
-      <li
-        v-for="(item, index) of topSites"
-        :key="item.url"
-        :class="['top-site-item', { hide: data.currentDrag === index }]"
-        :title="item.title"
-      >
-        <icon
-          :class="['top-site-icon', { 'shake-active': data.shake }]"
-          :text-icon="item.textIcon"
-          :src="item.icon"
-          :title="item.title"
-          :size="topSiteSetting.iconSize"
-          draggable="true"
-          @click="openPage(item.url)"
-          @contextmenu.prevent.stop="openEditStatus"
-          @dragstart="onDragIcon(DragType.start, index)"
-          @dragenter="onDragIcon(DragType.enter, index)"
-          @dragover.prevent
-          @dragend="onDragIcon(DragType.end, index)"
-        >
-          <div class="icon-board"></div>
+    <div class="top-site-viewport" @wheel="onWheel">
+      <div class="top-site-track" :style="trackStyle">
+        <div v-for="(page, pageIdx) in pages" :key="pageIdx" class="top-site-page">
+          <transition-group class="top-site-grid" name="flip-list" tag="ul">
+            <li
+              v-for="(item, localIdx) in page"
+              :key="item.url"
+              :class="['top-site-item', { hide: data.currentDrag === toGlobalIndex(pageIdx, localIdx) }]"
+              :title="item.title"
+            >
+              <icon
+                :class="['top-site-icon', { 'shake-active': data.shake }]"
+                :text-icon="item.textIcon"
+                :src="item.icon"
+                :title="item.title"
+                :size="topSiteSetting.iconSize"
+                draggable="true"
+                @click="openPage(item.url)"
+                @contextmenu.prevent.stop="openEditStatus"
+                @dragstart="onDragIcon(DragType.start, toGlobalIndex(pageIdx, localIdx))"
+                @dragenter="onDragIcon(DragType.enter, toGlobalIndex(pageIdx, localIdx))"
+                @dragover.prevent
+                @dragend="onDragIcon(DragType.end, toGlobalIndex(pageIdx, localIdx))"
+              >
+                <div class="icon-board"></div>
 
-          <transition name="scale">
-            <sup
-              v-show="data.editStatus"
-              class="bubble-delete"
-              @click.stop="topSiteStore.deleteTopSite(index)"
-            ></sup>
-          </transition>
-        </icon>
+                <transition name="scale">
+                  <sup
+                    v-show="data.editStatus"
+                    class="bubble-delete"
+                    @click.stop="topSiteStore.deleteTopSite(toGlobalIndex(pageIdx, localIdx))"
+                  ></sup>
+                </transition>
+              </icon>
 
-        <div class="icon-title">
-          <span>{{ item.title }}</span>
+              <div class="icon-title">
+                <span>{{ item.title }}</span>
+              </div>
+            </li>
+
+            <li
+              v-if="pageIdx === pages.length - 1"
+              v-show="!data.shake"
+              key="__add_button__"
+              class="top-site-item"
+              :title="t('topsite.add')"
+            >
+              <icon
+                class="top-site-icon"
+                title="＋"
+                :size="48"
+                textIcon
+                @click="data.showAddModal = true"
+              >
+                <div class="icon-board"></div>
+              </icon>
+
+              <div class="icon-title">
+                <span>{{ t("topsite.add") }}</span>
+              </div>
+            </li>
+          </transition-group>
         </div>
-      </li>
+      </div>
+    </div>
 
-      <li
-        v-if="topSites.length < topSiteSetting.col * topSiteSetting.row"
-        v-show="!data.shake"
-        class="top-site-item"
-        :title="t('topsite.add')"
-      >
-        <icon
-          class="top-site-icon"
-          title="＋"
-          :size="48"
-          textIcon
-          @click="data.showAddModal = true"
-        >
-          <div class="icon-board"></div>
-        </icon>
-
-        <div class="icon-title">
-          <span>{{ t("topsite.add") }}</span>
-        </div>
-      </li>
-    </transition-group>
+    <div v-if="totalPages > 1" class="page-indicators">
+      <span
+        v-for="i in totalPages"
+        :key="i"
+        :class="['indicator-dot', { active: data.currentPage === i - 1 }]"
+        @click="data.currentPage = i - 1"
+      />
+    </div>
 
     <a-modal
       v-model:visible="data.showAddModal"
@@ -95,7 +111,7 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, onBeforeMount, reactive } from "vue"
+import { computed, onBeforeMount, reactive, watch } from "vue"
 import { DragType, SortData, TopSiteItem, TopSites } from "@/types"
 import { OpenPageTarget } from "@/types/search"
 import { useSettingStore, useTopSiteStore } from "@/store"
@@ -108,14 +124,68 @@ const { t } = useI18n()
 const settingStore = useSettingStore()
 const topSiteStore = useTopSiteStore()
 const { topSite: topSiteSetting } = storeToRefs(settingStore)
-const topSites = computed<TopSites>(() => topSiteStore.getCurrentTopSites)
+
+const pageSize = computed(() => topSiteSetting.value.col * topSiteSetting.value.row)
+
+const pages = computed<TopSites[]>(() => {
+  const all = topSiteStore.topSites
+  const size = pageSize.value
+  const result: TopSites[] = []
+  for (let i = 0; i < all.length; i += size) {
+    result.push(all.slice(i, i + size))
+  }
+  if (result.length === 0) {
+    result.push([])
+  } else if (result[result.length - 1].length >= size) {
+    result.push([])
+  }
+  return result
+})
+
+const totalPages = computed(() => pages.value.length)
 
 const data = reactive({
+  currentPage: 0,
   currentDrag: -1,
   shake: false,
   editStatus: false,
   showAddModal: false
 })
+
+watch(totalPages, newTotal => {
+  if (data.currentPage >= newTotal) {
+    data.currentPage = Math.max(0, newTotal - 1)
+  }
+})
+
+const trackStyle = computed(() => ({
+  transform: `translateX(-${data.currentPage * 100}%)`,
+  transition: "transform 0.3s ease"
+}))
+
+const primaryColor = computed(() => settingStore.theme.primaryColor)
+
+function toGlobalIndex(pageIdx: number, localIdx: number): number {
+  return pageIdx * pageSize.value + localIdx
+}
+
+let lastWheelTime = 0
+function onWheel(e: WheelEvent) {
+  if (totalPages.value <= 1) return
+  e.preventDefault()
+
+  const now = Date.now()
+  if (now - lastWheelTime < 300) return
+
+  const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY
+  if (delta > 0 && data.currentPage < totalPages.value - 1) {
+    data.currentPage++
+    lastWheelTime = now
+  } else if (delta < 0 && data.currentPage > 0) {
+    data.currentPage--
+    lastWheelTime = now
+  }
+}
 
 const topSite = reactive({
   title: "",
@@ -141,7 +211,6 @@ function openEditStatus() {
   data.shake = true
   data.editStatus = true
 
-  // 点击其他位置关闭编辑状态
   document.body.addEventListener("click", closeEditStatus)
 }
 
@@ -155,21 +224,21 @@ function closeEditStatus(e: Event) {
   }
 }
 
-function onDragIcon(type: DragType, index: number) {
+function onDragIcon(type: DragType, globalIdx: number) {
   switch (type) {
     case DragType.start:
-      data.currentDrag = index
+      data.currentDrag = globalIdx
       openEditStatus()
       return
     case DragType.enter:
-      if (data.currentDrag === index) return
+      if (data.currentDrag === globalIdx) return
       const sortData: SortData = {
         from: data.currentDrag,
-        to: index
+        to: globalIdx
       }
 
       topSiteStore.sortTopSites(sortData)
-      data.currentDrag = index
+      data.currentDrag = globalIdx
       return
     case DragType.end:
       data.currentDrag = -1
@@ -211,10 +280,25 @@ onBeforeMount(init)
 @board-color: v-bind("topSiteSetting.boardColor");
 @board-opacity: v-bind("topSiteSetting.boardOpacity");
 @board-radius: v-bind("`${topSiteSetting.boardRadius}px`");
+@primary-color: v-bind("primaryColor");
 
 .top-site-warp {
-  height: calc(@row * @item-size-max + (@row - 1) * @gap);
   width: calc(@col * @item-size-max + (@col - 1) * @gap);
+
+  .top-site-viewport {
+    height: calc(@row * @item-size-max + (@row - 1) * @gap);
+    overflow: hidden;
+  }
+
+  .top-site-track {
+    display: flex;
+    height: 100%;
+  }
+
+  .top-site-page {
+    flex: 0 0 100%;
+    width: 100%;
+  }
 
   .top-site-grid {
     display: grid;
@@ -285,6 +369,29 @@ onBeforeMount(init)
       user-select: none;
     }
   }
+
+  .page-indicators {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 6px;
+    padding-top: 12px;
+
+    .indicator-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: rgba(128, 128, 128, 0.3);
+      cursor: pointer;
+      transition: all 0.3s ease;
+
+      &.active {
+        background-color: @primary-color;
+        width: 20px;
+        border-radius: 4px;
+      }
+    }
+  }
 }
 
 [data-theme="dark"] {
@@ -294,6 +401,10 @@ onBeforeMount(init)
         background-color: #1f1f1f !important;
         transition: background-color 0.3s ease;
       }
+    }
+
+    .page-indicators .indicator-dot {
+      background-color: rgba(255, 255, 255, 0.2);
     }
   }
 }
