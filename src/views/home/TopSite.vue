@@ -60,7 +60,7 @@
               <icon
                 class="top-site-icon"
                 title="＋"
-                :size="48"
+                :size="topSiteSetting.iconSize"
                 textIcon
                 @click="openAddModal"
               >
