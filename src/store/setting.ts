@@ -71,7 +71,8 @@ export default defineStore("setting", {
       boardOpacity: 0.8
     },
     layout: {
-      align: AlignType.searchCenter
+      align: AlignType.searchCenter,
+      offsetY: 0
     },
     popup: {
       current: 0

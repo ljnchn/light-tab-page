@@ -41,6 +41,7 @@ layout:
   topSiteBarTip: "导航栏数据来源于最近浏览，开启需要授权"
   colRow: "行/列数"
   space: "间距"
+  offsetY: "搜索框垂直偏移"
   align:
     text: "对齐"
     searchCenter: "仅搜索居中 (默认)"

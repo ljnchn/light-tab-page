@@ -34,6 +34,10 @@
     </setting-item>
   </template>
 
+  <setting-item :lable="t('layout.offsetY')">
+    <a-slider v-model:value="layout.offsetY" :min="-200" :max="200" :tipFormatter="toPixel" />
+  </setting-item>
+
   <setting-item :lable="t('layout.align.text')">
     <a-radio-group v-model:value="layout.align" button-style="solid">
       <a-radio :value="AlignType.searchCenter">{{ t("layout.align.searchCenter") }}</a-radio>
