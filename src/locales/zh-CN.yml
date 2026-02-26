@@ -57,6 +57,8 @@ topsite:
   boardOpacity: "底板不透明度"
   boardRound: "底板圆角"
   add: "添加导航"
+  edit: "编辑导航"
+  delete: "删除"
 
 other:
   setting: "其他设置"

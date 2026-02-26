@@ -9,30 +9,22 @@
               :key="item.url"
               :class="['top-site-item', { hide: data.currentDrag === toGlobalIndex(pageIdx, localIdx) }]"
               :title="item.title"
+              @contextmenu.prevent.stop="openEditModal(toGlobalIndex(pageIdx, localIdx))"
             >
               <icon
-                :class="['top-site-icon', { 'shake-active': data.shake }]"
+                class="top-site-icon"
                 :text-icon="item.textIcon"
                 :src="item.icon"
                 :title="item.title"
                 :size="topSiteSetting.iconSize"
                 draggable="true"
                 @click="openPage(item.url)"
-                @contextmenu.prevent.stop="openEditStatus"
                 @dragstart="onDragIcon(DragType.start, toGlobalIndex(pageIdx, localIdx))"
                 @dragenter="onDragIcon(DragType.enter, toGlobalIndex(pageIdx, localIdx))"
                 @dragover.prevent
                 @dragend="onDragIcon(DragType.end, toGlobalIndex(pageIdx, localIdx))"
               >
                 <div class="icon-board"></div>
-
-                <transition name="scale">
-                  <sup
-                    v-show="data.editStatus"
-                    class="bubble-delete"
-                    @click.stop="topSiteStore.deleteTopSite(toGlobalIndex(pageIdx, localIdx))"
-                  ></sup>
-                </transition>
               </icon>
 
               <div class="icon-title">
@@ -42,7 +34,6 @@
 
             <li
               v-if="pageIdx === pages.length - 1"
-              v-show="!data.shake"
               key="__add_button__"
               class="top-site-item"
               :title="t('topsite.add')"
@@ -52,7 +43,7 @@
                 title="＋"
                 :size="48"
                 textIcon
-                @click="data.showAddModal = true"
+                @click="openAddModal"
               >
                 <div class="icon-board"></div>
               </icon>
@@ -76,21 +67,22 @@
     </div>
 
     <a-modal
-      v-model:visible="data.showAddModal"
-      :title="t('topsite.add')"
+      v-model:visible="data.showModal"
+      :title="data.editingIndex >= 0 ? t('topsite.edit') : t('topsite.add')"
       :width="500"
       centered
       destroy-on-close
-      ok-text="保存"
-      cancel-text="取消"
-      @ok="onSaveCustomTopSite"
     >
-      <a-form :model="topSite" :label-col="{ span: 6 }" :wrapper-col="{ span: 16 }" ref="formRef">
-        <a-form-item label="网站标题" v-bind="validateInfos.title">
-          <a-input v-model:value="topSite.title" placeholder="标题" />
-        </a-form-item>
+      <a-form :model="topSite" :label-col="{ span: 6 }" :wrapper-col="{ span: 16 }">
         <a-form-item label="网站URL" v-bind="validateInfos.url">
-          <a-input v-model:value="topSite.url" placeholder="URL" />
+          <a-input v-model:value="topSite.url" placeholder="https://example.com" @blur="onUrlBlur" />
+        </a-form-item>
+        <a-form-item label="网站标题" v-bind="validateInfos.title">
+          <a-input v-model:value="topSite.title" placeholder="标题">
+            <template v-if="data.fetchingTitle" #suffix>
+              <loading-outlined />
+            </template>
+          </a-input>
         </a-form-item>
         <a-form-item label="自动获取图标">
           <a-switch v-model:checked="topSite.autoIcon" />
@@ -106,6 +98,20 @@
           <a-input v-model:value="topSite.icon" placeholder="图标URL" />
         </a-form-item>
       </a-form>
+
+      <template #footer>
+        <div class="modal-footer">
+          <div>
+            <a-button v-if="data.editingIndex >= 0" danger @click="onDeleteTopSite">
+              {{ t("topsite.delete") }}
+            </a-button>
+          </div>
+          <div>
+            <a-button @click="data.showModal = false">取消</a-button>
+            <a-button type="primary" @click="onSaveTopSite">保存</a-button>
+          </div>
+        </div>
+      </template>
     </a-modal>
   </div>
 </template>
@@ -117,6 +123,7 @@ import { OpenPageTarget } from "@/types/search"
 import { useSettingStore, useTopSiteStore } from "@/store"
 import { useI18n } from "vue-i18n"
 import { Form } from "ant-design-vue"
+import { LoadingOutlined } from "@ant-design/icons-vue"
 import { getFavicon } from "@/plugins/extension"
 import { storeToRefs } from "pinia"
 
@@ -147,9 +154,9 @@ const totalPages = computed(() => pages.value.length)
 const data = reactive({
   currentPage: 0,
   currentDrag: -1,
-  shake: false,
-  editStatus: false,
-  showAddModal: false
+  showModal: false,
+  editingIndex: -1,
+  fetchingTitle: false
 })
 
 watch(totalPages, newTotal => {
@@ -207,20 +214,98 @@ function openPage(url: string) {
   window.open(url, OpenPageTarget.Blank)
 }
 
-function openEditStatus() {
-  data.shake = true
-  data.editStatus = true
-
-  document.body.addEventListener("click", closeEditStatus)
+function openAddModal() {
+  resetFields()
+  data.editingIndex = -1
+  data.showModal = true
 }
 
-function closeEditStatus(e: Event) {
-  if (data.editStatus) {
-    e.stopPropagation()
+function openEditModal(globalIdx: number) {
+  const item = topSiteStore.topSites[globalIdx]
+  if (!item) return
 
-    data.shake = false
-    data.editStatus = false
-    document.body.removeEventListener("click", closeEditStatus)
+  data.editingIndex = globalIdx
+  topSite.title = item.title
+  topSite.url = item.url
+  topSite.textIcon = item.textIcon
+
+  if (item.icon && !item.icon.startsWith("chrome-extension://")) {
+    topSite.autoIcon = false
+    topSite.icon = item.icon
+  } else {
+    topSite.autoIcon = !item.textIcon
+    topSite.icon = ""
+  }
+
+  data.showModal = true
+}
+
+async function onSaveTopSite() {
+  try {
+    await validate()
+    const icon = topSite.autoIcon
+      ? getFavicon(topSite.url)
+      : topSite.textIcon
+        ? undefined
+        : topSite.icon || undefined
+
+    const itemData: TopSiteItem = {
+      title: topSite.title,
+      url: topSite.url,
+      icon,
+      textIcon: !topSite.autoIcon && topSite.textIcon,
+      custom: true
+    }
+
+    if (data.editingIndex >= 0) {
+      topSiteStore.updateTopSite({ ...itemData, index: data.editingIndex })
+    } else {
+      topSiteStore.addTopSite(itemData)
+    }
+
+    resetFields()
+    data.showModal = false
+  } catch {}
+}
+
+function onDeleteTopSite() {
+  if (data.editingIndex >= 0) {
+    topSiteStore.deleteTopSite(data.editingIndex)
+    data.showModal = false
+  }
+}
+
+async function fetchPageTitle(url: string): Promise<string | null> {
+  try {
+    const resp = await fetch(url, {
+      signal: AbortSignal.timeout(5000),
+      headers: { Accept: "text/html" }
+    })
+    const html = await resp.text()
+    const match = html.match(/<title[^>]*>([^<]+)<\/title>/i)
+    if (match) return match[1].trim()
+  } catch {
+    // CORS / network / timeout
+  }
+  try {
+    return new URL(url).hostname.replace(/^www\./, "")
+  } catch {
+    return null
+  }
+}
+
+async function onUrlBlur() {
+  const url = topSite.url?.trim()
+  if (!url || topSite.title) return
+
+  data.fetchingTitle = true
+  try {
+    const title = await fetchPageTitle(url)
+    if (title && !topSite.title) {
+      topSite.title = title
+    }
+  } finally {
+    data.fetchingTitle = false
   }
 }
 
@@ -228,7 +313,6 @@ function onDragIcon(type: DragType, globalIdx: number) {
   switch (type) {
     case DragType.start:
       data.currentDrag = globalIdx
-      openEditStatus()
       return
     case DragType.enter:
       if (data.currentDrag === globalIdx) return
@@ -244,22 +328,6 @@ function onDragIcon(type: DragType, globalIdx: number) {
       data.currentDrag = -1
       return
   }
-}
-
-async function onSaveCustomTopSite() {
-  try {
-    await validate()
-    const icon = topSite.autoIcon ? getFavicon(topSite.url) : undefined
-    const customData: TopSiteItem = {
-      ...topSite,
-      custom: true,
-      icon
-    }
-    topSiteStore.addTopSite(customData)
-
-    resetFields()
-    data.showAddModal = false
-  } catch {}
 }
 
 async function init() {
@@ -329,34 +397,11 @@ onBeforeMount(init)
       height: @board-size;
       cursor: pointer;
 
-      &.shake-active {
-        animation: shake 0.3s infinite;
-      }
-
       .icon-board {
         height: 100%;
         background-color: @board-color;
         opacity: @board-opacity;
         border-radius: @board-radius;
-      }
-
-      .bubble-delete {
-        width: 18px;
-        height: 18px;
-
-        position: absolute;
-        top: -9px;
-        right: -9px;
-        color: #f5f5f5;
-        background-color: #f5222d;
-        text-align: center;
-        line-height: 18px;
-        font-size: 12px;
-        border-radius: 50%;
-
-        &::before {
-          content: "X";
-        }
       }
     }
 
@@ -393,6 +438,12 @@ onBeforeMount(init)
       }
     }
   }
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 [data-theme="dark"] {
