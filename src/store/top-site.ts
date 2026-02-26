@@ -1,6 +1,6 @@
 import { defineStore } from "pinia"
 import useSettingStore from "./setting"
-import { getBrowserTopSites, getFavicon } from "@/plugins/extension"
+import { getBrowserTopSites, getFavicon, isExtension } from "@/plugins/extension"
 import { SortData, TopSiteItem, TopSites } from "@/types"
 import { verifyImageUrl } from "@/utils/img"
 import { isEmpty } from "@/utils/common"
@@ -101,6 +101,27 @@ export default defineStore("top-site", {
 
       topSites.splice(sort.from, 1)
       topSites.splice(sort.to, 0, from)
+    },
+
+    /**
+     * 刷新导航图标URL
+     * 导入备份数据后扩展ID可能变化，导致 chrome-extension:// 开头的图标URL失效
+     */
+    refreshIconUrls() {
+      if (!isExtension) return
+
+      for (const item of this.topSites) {
+        if (item.icon && item.icon.startsWith("chrome-extension://")) {
+          try {
+            const newIcon = getFavicon(item.url)
+            if (item.icon !== newIcon) {
+              item.icon = newIcon
+            }
+          } catch {
+            // URL 解析失败时跳过
+          }
+        }
+      }
     }
   }
 })

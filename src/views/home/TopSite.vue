@@ -263,6 +263,7 @@ async function onSaveCustomTopSite() {
 }
 
 async function init() {
+  topSiteStore.refreshIconUrls()
   if (!topSiteStore.lastUpdateTime) {
     await topSiteStore.syncBrowserTopSites()
   }
