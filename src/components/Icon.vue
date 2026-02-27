@@ -64,6 +64,7 @@ function getFontIcon() {
     z-index: 1;
 
     .text-icon {
+      margin: 0;
       text-align: center;
       font-size: 32px;
       line-height: 0.9;
