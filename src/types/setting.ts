@@ -50,6 +50,7 @@ export enum AlignType {
 
 export interface LayoutSetting {
   align: AlignType
+  offsetY: number
 }
 
 export interface PopupSettting {

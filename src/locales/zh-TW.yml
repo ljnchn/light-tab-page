@@ -41,6 +41,7 @@ layout:
   topSiteBarTip: "導航欄數據來源於最近瀏覽，開啟需要授權"
   colRow: "行/列數"
   space: "間距"
+  offsetY: "搜索框垂直偏移"
   align:
     text: "對齊"
     searchCenter: "僅搜索居中 (默認)"
@@ -57,6 +58,9 @@ topsite:
   boardOpacity: "底板不透明度"
   boardRound: "底板圓角"
   add: "添加導航"
+  edit: "編輯導航"
+  delete: "刪除"
+  deleteConfirm: "確定刪除該導航？"
 
 other:
   setting: "其他設置"

@@ -1,0 +1,68 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: pnpm install
+
+      - name: Type check
+        run: pnpm run check
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Package extension
+        run: |
+          cd dist
+          zip -r ../light-tab-page-${{ github.ref_name }}.zip .
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: light-tab-page-${{ github.ref_name }}.zip
+          generate_release_notes: true
+
+      # --- Chrome Web Store (需要配置 secrets) ---
+      # 取消注释并在仓库 Settings > Secrets 中添加:
+      #   CHROME_EXTENSION_ID, CHROME_CLIENT_ID, CHROME_CLIENT_SECRET, CHROME_REFRESH_TOKEN
+      #
+      # - name: Publish to Chrome Web Store
+      #   uses: mnao305/chrome-extension-upload@v5.0.0
+      #   with:
+      #     file-path: light-tab-page-${{ github.ref_name }}.zip
+      #     extension-id: ${{ secrets.CHROME_EXTENSION_ID }}
+      #     client-id: ${{ secrets.CHROME_CLIENT_ID }}
+      #     client-secret: ${{ secrets.CHROME_CLIENT_SECRET }}
+      #     refresh-token: ${{ secrets.CHROME_REFRESH_TOKEN }}
+
+      # --- Firefox Add-ons (需要配置 secrets) ---
+      # 取消注释并在仓库 Settings > Secrets 中添加:
+      #   FIREFOX_JWT_ISSUER, FIREFOX_JWT_SECRET
+      #
+      # - name: Publish to Firefox Add-ons
+      #   uses: browser-actions/release-firefox-addon@v0.1.3
+      #   with:
+      #     addon-id: "{c29037b9-7c63-4064-be30-cf42d599ca39}"
+      #     addon-path: light-tab-page-${{ github.ref_name }}.zip
+      #     auth-api-issuer: ${{ secrets.FIREFOX_JWT_ISSUER }}
+      #     auth-api-secret: ${{ secrets.FIREFOX_JWT_SECRET }}

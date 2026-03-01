@@ -41,6 +41,7 @@ layout:
   topSiteBarTip: "Topsite Bar data comes from the most recent browsing, opening requires authorization"
   colRow: "Col/Row"
   space: "Space"
+  offsetY: "Search vertical offset"
   align:
     text: "Align"
     searchCenter: "Search only center (Default)"
@@ -57,6 +58,9 @@ topsite:
   boardOpacity: "Board opacity"
   boardRound: "Board round"
   add: "Add topsite"
+  edit: "Edit topsite"
+  delete: "Delete"
+  deleteConfirm: "Delete this topsite?"
 
 other:
   setting: "Other Setting"

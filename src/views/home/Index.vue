@@ -6,7 +6,7 @@
       'overall-center': state.align === AlignType.overallCenter
     }"
   >
-    <search class="search" :value="state.searchText" />
+    <search class="search" :value="state.searchText" :style="searchOffsetStyle" />
 
     <transition name="fade">
       <top-site v-if="state.enableTopSite" />
@@ -51,6 +51,11 @@ const state = reactive({
   align: computed(() => settingStore.layout.align),
   enableTopSite: computed(() => settingStore.topSite.enable),
   enableWallpaper: computed(() => settingStore.background.type !== BackgroundType.None)
+})
+
+const searchOffsetStyle = computed(() => {
+  const offset = settingStore.layout.offsetY
+  return offset ? { transform: `translateY(${offset}px)` } : {}
 })
 </script>
 
