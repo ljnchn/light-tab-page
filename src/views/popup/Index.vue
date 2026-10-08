@@ -1,7 +1,8 @@
 <template>
   <main id="popup-layout">
+    <quick-add />
     <div class="title">
-      <a-select v-model:value="popup.current" :bordered="false" size="small">
+      <a-select v-model:value="popup.current" aria-label="切换列表" :bordered="false" size="small">
         <a-select-option v-for="(item, index) of popupMenu" :value="index" :key="item.title">
           <span>
             <component :is="item.icon" />
@@ -12,7 +13,7 @@
 
       <div class="action-menu" v-if="currentMenu">
         <a-tooltip v-for="item of currentMenu.actions" :key="item.title" :title="item.title">
-          <a-button type="text" size="small" @click="item.click">
+          <a-button type="text" size="small" :aria-label="item.title" @click="item.click">
             <component :is="item.icon" />
           </a-button>
         </a-tooltip>
@@ -30,11 +31,12 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, DefineComponent, FunctionalComponent } from "vue"
+import { computed, DefineComponent, FunctionalComponent, watchEffect } from "vue"
 import { useSearchStore, useSettingStore } from "@/store"
 import { HistoryOutlined, RestOutlined, AppstoreOutlined } from "@ant-design/icons-vue"
 import HomeTopSite from "./HomeTopSite.vue"
 import SearchHistory from "./SearchHistory.vue"
+import QuickAdd from "./QuickAdd.vue"
 import { useI18n } from "vue-i18n"
 import { storeToRefs } from "pinia"
 
@@ -47,7 +49,6 @@ interface ActionItem {
 interface PopupMenuItem {
   title: string
   icon: FunctionalComponent
-  skip?: boolean
   component: DefineComponent<{}, {}, any>
   actions?: Array<ActionItem>
 }
@@ -61,7 +62,6 @@ const popupMenu = computed<PopupMenuItem[]>(() =>
     {
       title: t("popup.topsite"),
       icon: AppstoreOutlined,
-      skip: !store.topSite.enable,
       component: HomeTopSite
     },
     {
@@ -76,11 +76,14 @@ const popupMenu = computed<PopupMenuItem[]>(() =>
         }
       ]
     }
-  ].filter(item => !item.skip)
+  ]
 )
 
 // 当前菜单
-const currentMenu = computed(() => popupMenu.value[popup.value.current])
+const currentMenu = computed(() => popupMenu.value[popup.value.current] || popupMenu.value[0])
+watchEffect(() => {
+  if (!popupMenu.value[popup.value.current]) popup.value.current = 0
+})
 
 function cleanHistory() {
   const searchStore = useSearchStore()
@@ -92,9 +95,11 @@ function cleanHistory() {
 @title-h: 38px;
 
 #popup-layout {
-  width: 300px;
-  height: 500px;
-  max-height: 500px;
+  width: 360px;
+  height: 580px;
+  max-height: 580px;
+  display: flex;
+  flex-direction: column;
 
   .title {
     display: flex;
@@ -102,9 +107,10 @@ function cleanHistory() {
     align-items: center;
 
     height: @title-h;
+    flex-shrink: 0;
     line-height: @title-h;
     padding: 0 8px;
-    border-bottom: 1px solid #f0f0f0;
+    border-bottom: 1px solid rgba(128, 128, 128, 0.22);
 
     .ant-select-selector {
       padding: 0 4px;
@@ -120,7 +126,8 @@ function cleanHistory() {
   .content-warp {
     overflow-y: auto;
     overflow-x: hidden;
-    height: calc(100% - @title-h);
+    min-height: 0;
+    flex: 1;
   }
 }
 </style>

@@ -1,24 +1,24 @@
 import { defineStore } from "pinia"
-import { copy, isEmpty, uuid } from "@/utils/common"
+import { isEmpty, uuid } from "@/utils/common"
 import { wallpaperStore } from "@/plugins/localforage"
 import { isImageFile } from "@/utils/img"
 import { usePreferredDark } from "@/utils/use"
 import { getDailyWallpaperUrl } from "@/api/bing"
-import { isObjectURL } from "@/utils/browser"
 import { saveAs } from "file-saver"
 import { fromUrl } from "@/utils/palette"
+import { createBackup, parseBackup, restoreBackup } from "@/utils/backup"
+import { createDefaultSetting } from "@/utils/setting-defaults"
 import {
   BackgroundSetting,
   BackgroundType,
   ThemeMode,
   TopSiteSetting,
   LayoutSetting,
-  AlignType,
   PopupSettting,
   LanguageType,
   ThemeSetting
 } from "@/types/setting"
-import { SearchSetting, OpenPageTarget, SearchSuggestion } from "@/types/search"
+import { SearchSetting } from "@/types/search"
 
 export interface SettingState {
   lang: LanguageType
@@ -30,54 +30,18 @@ export interface SettingState {
   popup: PopupSettting
 }
 
-const BACKUP_FILE_MARK = "_MARK_"
 const DEFAULT_COLOR = ["#1890ff", "#7FBA00", "#F25022", "#FFB900", "#00A4EF", "#1F1F1F"]
+let ownedBackgroundUrl: string | null = null
+let pendingBackgroundLoad: { owner: object; id: string | null; task: Promise<string | null | undefined> } | undefined
+
+function ownBackgroundUrl(url: string | null) {
+  // A synchronized setting may contain another tab's URL; only revoke this page's URLs.
+  if (ownedBackgroundUrl && ownedBackgroundUrl !== url) URL.revokeObjectURL(ownedBackgroundUrl)
+  ownedBackgroundUrl = url
+}
 
 export default defineStore("setting", {
-  state: (): SettingState => ({
-    lang: LanguageType.Auto,
-    theme: {
-      mode: ThemeMode.Auto,
-      primaryColor: "#1890ff",
-      colorPalette: []
-    },
-    background: {
-      id: "",
-      type: BackgroundType.None,
-      url: "",
-      blur: 0,
-      maskColor: "#000",
-      maskOpacity: 0,
-      autoOpacity: true
-    },
-    search: {
-      currentEngine: "bing",
-      openPageTarget: OpenPageTarget.Blank,
-      showEngineIcon: true,
-      showEngineSelect: true,
-      searchInputRadius: 4,
-      useSearchEngines: ["bing", "google", "baidu"],
-      suggestion: SearchSuggestion.none
-    },
-    topSite: {
-      enable: false,
-      col: 6,
-      row: 2,
-      gap: 16,
-      iconSize: 32,
-      boardSize: 64,
-      boardRadius: 4,
-      boardColor: "#fff",
-      boardOpacity: 0.8
-    },
-    layout: {
-      align: AlignType.searchCenter,
-      offsetY: 0
-    },
-    popup: {
-      current: 0
-    }
-  }),
+  state: createDefaultSetting,
   getters: {
     /**
      * 获取当前语言
@@ -125,21 +89,25 @@ export default defineStore("setting", {
      * @param imageFile
      */
     async uploadBackgroundImage(imageFile: File) {
-      if (!isImageFile(imageFile)) throw new Error("这不是一个图片文件")
-
-      const id = uuid(),
-        url = URL.createObjectURL(imageFile),
-        url_old = this.background.url
-
-      // 清除上次壁纸，ObjectURL可能导致内存溢出
-      await wallpaperStore.clear()
-      if (url_old && isObjectURL(url_old)) {
-        URL.revokeObjectURL(url_old)
+      if (!isImageFile(imageFile)) throw new Error("invalidImage")
+      const id = uuid()
+      const url = URL.createObjectURL(imageFile)
+      try {
+        // Keep the old file and setting intact until the new Blob is durable.
+        await wallpaperStore.setItem<Blob>(id, imageFile)
+      } catch (error) {
+        URL.revokeObjectURL(url)
+        throw error
       }
-
-      // 保存图片到IndexedDB
-      await wallpaperStore.setItem<Blob>(id, imageFile)
-      copy({ id, url }, this.background)
+      const previousId = this.background.id
+      const active = this.background.type === BackgroundType.Local
+      this.$patch(state => { state.background.id = id; if (active) state.background.url = url })
+      if (!active) URL.revokeObjectURL(url)
+      ownBackgroundUrl(active ? url : null)
+      if (previousId && previousId !== id) {
+        try { await wallpaperStore.removeItem(previousId) }
+        catch { /* Cleanup failure must not undo a successfully saved wallpaper. */ }
+      }
     },
 
     /**
@@ -148,18 +116,21 @@ export default defineStore("setting", {
      * @param param0
      */
     async reloadBackgroundImage() {
-      const id = this.background?.id!
-      const file = await wallpaperStore.getItem<Blob>(id)
-
-      // 校验图片数据是否可用，否则删除该数据
-      if (file && isImageFile(file)) {
-        const url = URL.createObjectURL(file)
+      if (this.background.type !== BackgroundType.Local) return
+      const id = this.background.id
+      if (pendingBackgroundLoad?.owner === this && pendingBackgroundLoad.id === id) return pendingBackgroundLoad.task
+      const task = (async () => {
+        const file = id ? await wallpaperStore.getItem<Blob>(id) : null
+        if (this.background.id !== id || this.background.type !== BackgroundType.Local) return
+        const url = file && isImageFile(file) ? URL.createObjectURL(file) : null
         this.background.url = url
-      } else {
-        this.background.id = null
-        this.background.url = null
-        await wallpaperStore.removeItem(id)
-      }
+        ownBackgroundUrl(url)
+        // Retain a missing file's ID so exporting reports it instead of silently omitting it.
+        return url
+      })()
+      pendingBackgroundLoad = { owner: this, id, task }
+      try { return await task }
+      finally { if (pendingBackgroundLoad?.task === task) pendingBackgroundLoad = undefined }
     },
 
     /**
@@ -170,8 +141,9 @@ export default defineStore("setting", {
     async loadBingDailyWallpaper() {
       const url = await getDailyWallpaperUrl()
 
-      if (isEmpty(url)) return
+      if (isEmpty(url) || this.background.type !== BackgroundType.Bing) return
       this.background.url = url
+      ownBackgroundUrl(null)
     },
 
     async loadWallpaperPalette() {
@@ -183,12 +155,9 @@ export default defineStore("setting", {
      * 导出设置数据
      * 使用JSON格式保存
      */
-    exportSetting() {
+    async exportSetting() {
       const { npm_package_name, npm_package_version } = import.meta.env
-      const dataJson = JSON.stringify({
-        [BACKUP_FILE_MARK]: npm_package_name,
-        ...window.localStorage
-      })
+      const dataJson = await createBackup()
 
       // 保存文件
       const blob = new Blob([dataJson], { type: "application/json;charset=utf-8" })
@@ -200,17 +169,7 @@ export default defineStore("setting", {
      * 使用JSON格式保存
      */
     async importSetting(file: File) {
-      if (!file.type.includes("json")) throw new Error("导入文件不匹配")
-
-      const dataJson = await file.text()
-      const data = JSON.parse(dataJson)
-      const { npm_package_name } = import.meta.env
-      if (data[BACKUP_FILE_MARK] !== npm_package_name) throw new Error("备份文件已损坏")
-
-      for (let item in data) {
-        if (item === BACKUP_FILE_MARK) continue
-        localStorage.setItem(item, data[item])
-      }
+      await restoreBackup(parseBackup(await file.text()))
     }
   }
 })

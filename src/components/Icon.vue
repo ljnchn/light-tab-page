@@ -8,7 +8,7 @@
       }"
     >
       <p
-        v-if="props.textIcon || !props.src"
+        v-if="props.textIcon || !props.src || failed"
         class="text-icon"
         :style="{
           fontSize: sizePixel
@@ -16,7 +16,7 @@
       >
         {{ getFontIcon() }}
       </p>
-      <img v-else class="img-icon" :src="props.src" alt="logo" draggable="false" />
+      <img v-else class="img-icon" :src="props.src" alt="" draggable="false" @error="failed = true" />
     </div>
 
     <slot />
@@ -26,7 +26,7 @@
 <script lang="ts" setup>
 import { isEmpty } from "@/utils/common"
 import { toPixel } from "@/utils/format"
-import { computed } from "vue"
+import { computed, ref, watch } from "vue"
 
 interface IconProps {
   src?: string
@@ -41,6 +41,8 @@ const props = withDefaults(defineProps<IconProps>(), {
 })
 
 const sizePixel = computed(() => toPixel(props.size))
+const failed = ref(false)
+watch([() => props.src, () => props.textIcon], () => { failed.value = false })
 
 function getFontIcon() {
   if (isEmpty(props.title)) return "无"
@@ -72,6 +74,7 @@ function getFontIcon() {
     }
 
     .img-icon {
+      display: block;
       height: 100%;
       width: 100%;
     }

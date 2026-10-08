@@ -1,7 +1,11 @@
 export interface TopSiteItem {
+  id?: string
+  kind?: "folder"
+  folderId?: string
   title: string
   url: string
   icon?: string
+  autoIcon?: boolean
   color?: string
   textIcon: boolean
   custom: boolean

@@ -92,7 +92,7 @@ import { ref, reactive, computed } from "vue"
 import { PlusOutlined } from "@ant-design/icons-vue"
 import { DEFAULT_SEARCH_ENGINES } from "@/store/search"
 import { SearchEngineItem } from "@/types/search"
-import { Form } from "ant-design-vue"
+import { Form, message } from "ant-design-vue"
 import { useSettingStore, useSearchStore } from "@/store"
 import { storeToRefs } from "pinia"
 
@@ -113,7 +113,7 @@ const addEngineState = reactive({
 })
 
 const rules = reactive({
-  name: [{ required: true, message: "请输入名称" }],
+  name: [{ required: true, whitespace: true, message: "请输入名称" }],
   icon: [{ required: true, message: "请输入图标URL", type: "url" }],
   url: [{ required: true, message: "请输入地址URL", type: "url" }]
 })
@@ -152,7 +152,8 @@ function removeUseSearchEngines(engineId: string) {
 async function addSearchEngine() {
   try {
     await validate()
-    const { name, icon, description, url } = addEngineState
+    const { icon, description, url } = addEngineState
+    const name = addEngineState.name.trim()
     const data: SearchEngineItem = {
       name,
       icon,
@@ -167,7 +168,9 @@ async function addSearchEngine() {
     // 重置并关闭表单
     resetFields()
     addEngineState.show = false
-  } catch {}
+  } catch (error) {
+    if (error instanceof Error) message.error(error.message)
+  }
 }
 </script>
 

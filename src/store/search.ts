@@ -37,20 +37,13 @@ export const DEFAULT_SEARCH_ENGINES: SearchEngineData = Object.fromEntries(
   ])
 )
 
-const defaultState: SearchState = {
-  searchEngines: { ...DEFAULT_SEARCH_ENGINES },
-  history: [],
-  rules: Object.fromEntries(rules.map(item => [item.id, new RuleData(item)]))
-}
-
 export default defineStore("search", {
   persist: false,
-  state: (): SearchState => {
-    const searchEngines = JSON.parse(localStorage[SEARCH_ENGINES_STORAGE] ?? "{}")
-    Object.assign(defaultState.searchEngines, searchEngines)
-
-    return defaultState
-  },
+  state: (): SearchState => ({
+    searchEngines: readSearchEngines(),
+    history: readHistory(),
+    rules: Object.fromEntries(rules.map(item => [item.id, new RuleData(item)]))
+  }),
   getters: {
     /**
      * 获取当前使用的搜索引擎
@@ -59,7 +52,7 @@ export default defineStore("search", {
      */
     currentUseEngine(state): SearchEngineItem {
       const { search } = useSettingStore()
-      return state.searchEngines[search.currentEngine]
+      return state.searchEngines[search.currentEngine] ?? DEFAULT_SEARCH_ENGINES.bing
     },
 
     /**
@@ -92,7 +85,7 @@ export default defineStore("search", {
 
       const settingStore = useSettingStore()
       const setting = settingStore.search
-      const currentEngine = setting.currentEngine!
+      const currentEngine = this.currentUseEngine.id
       const history: HistoryItem = {
         engineId: currentEngine,
         searchText: searchTrim,
@@ -117,7 +110,7 @@ export default defineStore("search", {
       const searchEngines = this.searchEngines
 
       // 构建搜索URL
-      const url = AnalyzeUrl.defalut(searchEngines[engine].baseUrl, {
+      const url = AnalyzeUrl.defalut((searchEngines[engine] ?? DEFAULT_SEARCH_ENGINES.bing).baseUrl, {
         searchText: text
       }).getUrlString()
 
@@ -151,7 +144,7 @@ export default defineStore("search", {
      * @param newHistory
      */
     putHistory(newHistory: HistoryItem) {
-      let history: Array<HistoryItem> = JSON.parse(localStorage[SEARCH_HISTORY_STORAGE] ?? "[]")
+      let history = readHistory()
 
       // 去重并在头添加
       history = history.filter(item => item.searchText !== newHistory.searchText)
@@ -167,7 +160,8 @@ export default defineStore("search", {
      * @param index
      */
     deleteHistory(index: number) {
-      const history: Array<HistoryItem> = JSON.parse(localStorage[SEARCH_HISTORY_STORAGE] ?? "[]")
+      const history = readHistory()
+      if (!Number.isInteger(index) || index < 0 || index >= history.length) return
       history.splice(index, 1)
 
       this.history = history
@@ -179,8 +173,11 @@ export default defineStore("search", {
      * @param state
      */
     loadHistory() {
-      const history: Array<HistoryItem> = JSON.parse(localStorage[SEARCH_HISTORY_STORAGE] ?? "[]")
-      this.history = history
+      this.history = readHistory()
+    },
+
+    loadSearchEngines() {
+      this.searchEngines = readSearchEngines()
     },
 
     /**
@@ -198,13 +195,27 @@ export default defineStore("search", {
      * @param data
      */
     addSearchEngine(data: SearchEngineItem) {
+      const id = data.id.trim()
+      const name = data.name.trim()
+      if (!id || !name) throw new Error("请输入搜索引擎名称")
+      if (Object.prototype.hasOwnProperty.call(DEFAULT_SEARCH_ENGINES, id) ||
+        ["__proto__", "constructor", "prototype"].includes(id)) {
+        throw new Error("此名称已被系统保留，请使用其他搜索引擎名称")
+      }
+      if (Object.prototype.hasOwnProperty.call(this.searchEngines, id)) {
+        throw new Error("此搜索引擎名称已存在，请使用其他名称")
+      }
+      try {
+        const url = new URL(data.baseUrl)
+        if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) throw new Error()
+      } catch { throw new Error("请输入有效的 HTTP 或 HTTPS 搜索地址") }
       const searchEnginesNew = {
         ...this.searchEngines,
-        [data.id]: data
+        [id]: { ...data, id, name }
       }
 
-      this.searchEngines = searchEnginesNew
       saveSearchEngineData(searchEnginesNew)
+      this.searchEngines = searchEnginesNew
     },
 
     /**
@@ -213,10 +224,14 @@ export default defineStore("search", {
      * @param searchKey
      */
     deleteSearchEngine(searchKey: string) {
+      if (Object.prototype.hasOwnProperty.call(DEFAULT_SEARCH_ENGINES, searchKey)) return
       const searchEnginesNew = deepClone(this.searchEngines, searchKey)
 
       this.searchEngines = searchEnginesNew
       saveSearchEngineData(searchEnginesNew)
+      const { search } = useSettingStore()
+      search.useSearchEngines = search.useSearchEngines.filter(id => id !== searchKey)
+      if (search.currentEngine === searchKey) search.currentEngine = "bing"
     }
   }
 })
@@ -228,11 +243,39 @@ function saveSearchEngineData(data: SearchEngineData) {
 }
 
 function saveSearchHistory(data: Array<HistoryItem>) {
-  const length = data.length
-  if (length > SEARCH_HISTORY_LENGTH) {
-    data.splice(SEARCH_HISTORY_LENGTH - 1, length - SEARCH_HISTORY_LENGTH)
-  }
+  if (data.length > SEARCH_HISTORY_LENGTH) data.splice(SEARCH_HISTORY_LENGTH)
 
   const dataJson = JSON.stringify(data)
   localStorage.setItem(SEARCH_HISTORY_STORAGE, dataJson)
+}
+
+function readHistory(): HistoryItem[] {
+  try {
+    const value = JSON.parse(localStorage.getItem(SEARCH_HISTORY_STORAGE) ?? "[]")
+    if (!Array.isArray(value)) return []
+    return value.filter(item => item && typeof item.searchText === "string" &&
+      typeof item.engineId === "string" && Number.isFinite(item.timestamp)).slice(0, SEARCH_HISTORY_LENGTH)
+  } catch {
+    return []
+  }
+}
+
+function readSearchEngines(): SearchEngineData {
+  const result = { ...DEFAULT_SEARCH_ENGINES }
+  try {
+    const value = JSON.parse(localStorage.getItem(SEARCH_ENGINES_STORAGE) ?? "{}")
+    if (!value || typeof value !== "object" || Array.isArray(value)) return result
+    for (const [key, item] of Object.entries(value) as [string, SearchEngineItem][]) {
+      if (Object.prototype.hasOwnProperty.call(DEFAULT_SEARCH_ENGINES, key) ||
+        ["__proto__", "constructor", "prototype"].includes(key)) continue
+      if (!item || item.id !== key || typeof item.name !== "string" || typeof item.baseUrl !== "string") continue
+      try {
+        const url = new URL(item.baseUrl)
+        if (["http:", "https:"].includes(url.protocol) && !url.username && !url.password) result[key] = item
+      } catch { /* One damaged engine must not hide the remaining valid engines. */ }
+    }
+  } catch {
+    // Keep built-in engines available even if local custom data is damaged.
+  }
+  return result
 }

@@ -1,7 +1,7 @@
 <template>
   <div class="background-setting">
     <setting-item :lable="t('background.wallpaper.setting')">
-      <a-radio-group v-model:value="background.type" button-style="solid">
+      <a-radio-group v-model:value="background.type" button-style="solid" :disabled="uploading">
         <a-radio :value="BackgroundType.None">{{ t("background.wallpaper.none") }}</a-radio>
         <a-radio :value="BackgroundType.Local">{{ t("background.wallpaper.local") }}</a-radio>
         <a-radio :value="BackgroundType.Bing" :disabled="!isExtension" v-permis="Permis.bing">
@@ -19,14 +19,15 @@
         class="background-uploader"
         list-type="picture-card"
         :show-upload-list="false"
-        :customRequest="uploadBackgroundImage"
-        accept="image/*"
+        :before-upload="uploadBackgroundImage"
+        :disabled="uploading"
+        accept="image/png,image/jpeg,image/gif"
         style="width: 100%"
       >
-        <img v-if="background.url" :src="background.url" alt="avatar" />
-        <div v-else>
-          <plus-outlined />
-        </div>
+        <a-spin :spinning="uploading">
+          <img v-if="background.url" :src="background.url" :alt="t('background.wallpaper.local')" />
+          <div v-else><plus-outlined /></div>
+        </a-spin>
       </a-upload>
     </setting-item>
 
@@ -52,7 +53,8 @@
 </template>
 
 <script lang="ts" setup>
-import { watch } from "vue"
+import { ref } from "vue"
+import { message } from "ant-design-vue"
 import { PlusOutlined } from "@ant-design/icons-vue"
 import { BackgroundType } from "@/types/setting"
 import { isExtension, Permis } from "@/plugins/extension"
@@ -64,20 +66,18 @@ import { storeToRefs } from "pinia"
 const { t } = useI18n()
 const store = useSettingStore()
 const { background } = storeToRefs(store)
+const uploading = ref(false)
 
-function uploadBackgroundImage(e) {
-  store.uploadBackgroundImage(e.file)
+async function uploadBackgroundImage(file: File) {
+  if (uploading.value) return false
+  uploading.value = true
+  try { await store.uploadBackgroundImage(file) }
+  catch (error) {
+    message.error(t(error instanceof Error && error.message === "invalidImage"
+      ? "background.wallpaper.invalidImage" : "background.wallpaper.uploadFailed"))
+  } finally { uploading.value = false }
+  return false
 }
-
-// 监听到背景类型为Bing则拉取壁纸
-watch(
-  () => background.value.type,
-  type => {
-    if (type === BackgroundType.Bing) {
-      store.loadBingDailyWallpaper()
-    }
-  }
-)
 </script>
 
 <style lang="less">

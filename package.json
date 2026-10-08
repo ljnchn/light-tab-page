@@ -12,7 +12,8 @@
     "dev": "vite",
     "build": "vite build",
     "watch": "vite build --watch --mode development",
-    "check": "vue-tsc --noEmit"
+    "check": "vue-tsc --noEmit",
+    "test": "node script/check-top-sites.cjs && node script/check-search.cjs && node script/check-backup-webdav.cjs && node script/check-wallpaper.cjs && node script/check-wallpaper-view.cjs && node script/check-persistence.cjs && node script/test-extension.mjs"
   },
   "dependencies": {
     "@ant-design/icons-vue": "^6.1.0",

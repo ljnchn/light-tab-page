@@ -5,11 +5,7 @@
       <icon-tooltip v-if="!topSite.enable" :title="t('layout.topSiteBarTip')" type="warn" />
     </template>
 
-    <a-switch
-      v-model:checked="topSite.enable"
-      :disabled="!isExtension"
-      v-permis="Permis.topSite"
-    />
+    <a-switch v-model:checked="topSite.enable" />
   </setting-item>
 
   <template v-if="topSite.enable">
@@ -50,7 +46,6 @@
 import { useSettingStore } from "@/store"
 import { AlignType } from "@/types/setting"
 import { toPixel } from "@/utils/format"
-import { isExtension, Permis } from "@/plugins/extension"
 import { useI18n } from "vue-i18n"
 import { storeToRefs } from "pinia"
 

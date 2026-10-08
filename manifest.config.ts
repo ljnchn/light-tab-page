@@ -6,9 +6,10 @@ export default defineManifestV3({
   description: "__MSG_description__",
   version: process.env.npm_package_version!,
   default_locale: "zh_CN",
-  minimum_chrome_version: "88.0.0",
-  permissions: ["favicon"],
+  minimum_chrome_version: "102.0.0",
+  permissions: ["favicon", "activeTab"],
   optional_permissions: ["topSites"],
+  optional_host_permissions: ["http://*/*", "https://*/*"],
   host_permissions: [
     "https://cn.bing.com/",
     "https://suggestion.baidu.com/",
@@ -35,7 +36,8 @@ export default defineManifestV3({
   /** 兼容Firefox */
   browser_specific_settings: {
     gecko: {
-      id: "{c29037b9-7c63-4064-be30-cf42d599ca39}"
+      id: "{c29037b9-7c63-4064-be30-cf42d599ca39}",
+      strict_min_version: "128.0"
     }
   }
 })

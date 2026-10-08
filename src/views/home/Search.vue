@@ -81,6 +81,7 @@ watch(
  * 将搜索内容重定向到搜索引擎
  */
 function onSearch(searchText: string) {
+  if (!searchText?.trim()) return
   search.submitSearch(searchText)
 }
 
@@ -88,13 +89,22 @@ function onSearch(searchText: string) {
  * 搜索建议自动完成处理
  * 获取搜索建议数据
  */
-const debounceSearchSuggestion = debounce(handleSearchSuggestion)
-async function handleSearchSuggestion(value: string) {
+let suggestionRequest = 0
+const delayedSearchSuggestion = debounce(handleSearchSuggestion)
+function debounceSearchSuggestion(value: string) {
+  const request = ++suggestionRequest
+  delayedSearchSuggestion(value, request)
+}
+async function handleSearchSuggestion(value: string, request: number) {
   if (isEmpty(value)) {
     searchSuggestion.value = []
   } else {
-    const suggestion: string[] = await search.getSuggestion(value)
-    searchSuggestion.value = suggestion.map(item => ({ value: item }))
+    try {
+      const suggestion: string[] = await search.getSuggestion(value)
+      if (request === suggestionRequest) searchSuggestion.value = suggestion.map(item => ({ value: item }))
+    } catch {
+      if (request === suggestionRequest) searchSuggestion.value = []
+    }
   }
 }
 
@@ -105,10 +115,10 @@ async function handleSearchSuggestion(value: string) {
 function onSwitchEngines(e: KeyboardEvent) {
   if (e.key !== "Tab") return
 
-  e.preventDefault()
-
   const engineKeys = Object.keys(search.useSearchEngines)
   const length = engineKeys.length
+  if (!length) return
+  e.preventDefault()
 
   let currentIndex = engineKeys.indexOf(searchSetting.value.currentEngine)
   currentIndex += e.shiftKey ? -1 : 1

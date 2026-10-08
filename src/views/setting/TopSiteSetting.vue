@@ -8,7 +8,7 @@
         </span>
       </template>
 
-      <a-button :loading="state.syncing" @click="syncBrowserTopSites">
+      <a-button :loading="state.syncing" :disabled="!isExtension" @click="syncBrowserTopSites">
         {{ t("topsite.sync") }}
       </a-button>
     </setting-item>
@@ -58,7 +58,8 @@
 import { toPixel, toPercent } from "@/utils/format"
 import { useSettingStore, useTopSiteStore } from "@/store"
 import { computed, reactive } from "vue"
-import { sleep } from "@/utils/async"
+import { message } from "ant-design-vue"
+import { isExtension, Permis, requestPermissions } from "@/plugins/extension"
 import dayjs from "@/plugins/dayjs"
 import { useI18n } from "vue-i18n"
 import { storeToRefs } from "pinia"
@@ -69,17 +70,25 @@ const topSiteStore = useTopSiteStore()
 const { topSite } = storeToRefs(settingStore)
 
 const state = reactive({ syncing: false })
-const lastUpdateTime = computed(() => dayjs(topSiteStore.lastUpdateTime).fromNow())
+const lastUpdateTime = computed(() => topSiteStore.lastUpdateTime ? dayjs(topSiteStore.lastUpdateTime).fromNow() : "尚未同步")
 
 /**
  * 同步浏览器最近浏览
  */
 async function syncBrowserTopSites() {
+  if (state.syncing || !isExtension) return
   state.syncing = true
-  await sleep(1000) // 提升loading体验
-
-  await topSiteStore.syncBrowserTopSites()
-  state.syncing = false
+  try {
+    // Request directly inside the click handler to retain the browser user gesture.
+    if (!(await requestPermissions(Permis.topSite))) {
+      message.info("需要允许读取常用网站，才能同步浏览器导航")
+      return
+    }
+    await topSiteStore.syncBrowserTopSites()
+    message.success("浏览器导航已同步，已添加的链接和文件夹已保留")
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : "同步失败，请重试")
+  } finally { state.syncing = false }
 }
 </script>
 

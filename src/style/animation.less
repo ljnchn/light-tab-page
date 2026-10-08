@@ -1,6 +1,13 @@
+:root {
+  --motion-fast: 160ms;
+  --motion-normal: 240ms;
+  --motion-slow: 320ms;
+  --motion-ease: cubic-bezier(.22, 1, .36, 1);
+}
+
 .fade-enter-active,
 .fade-leave-active {
-  transition: opacity 0.3s ease;
+  transition: opacity var(--motion-normal) var(--motion-ease);
 }
 
 .fade-enter-from,
@@ -10,39 +17,39 @@
 
 .scale-enter-active,
 .scale-leave-active {
-  transition: transform 0.3s ease;
+  transition: transform var(--motion-fast) var(--motion-ease), opacity var(--motion-fast) var(--motion-ease);
 }
 
 .scale-enter-from,
 .scale-leave-to {
-  transform: scale(0);
+  opacity: 0;
+  transform: scale(.97);
 }
 
 .moveY-enter-active,
 .moveY-leave-active {
-  transition: all 0.3s ease;
+  transition: transform var(--motion-normal) var(--motion-ease), opacity var(--motion-normal) var(--motion-ease);
 }
 
 .moveY-enter-from,
 .moveY-leave-to {
   opacity: 0;
-  transform: translateY(32px);
+  transform: translateY(10px) scale(.97);
 }
 
 .flip-list-enter-active,
-.flip-list-leave-active,
-.flip-list-move {
-  transition: all 0.3s ease;
+.flip-list-leave-active {
+  transition: transform var(--motion-normal) var(--motion-ease), opacity var(--motion-normal) var(--motion-ease);
 }
 
-.flip-list-enter-active {
-  transition-delay: 0.3s;
+.flip-list-move {
+  transition: transform var(--motion-normal) var(--motion-ease);
 }
 
 .flip-list-enter-from,
 .flip-list-leave-to {
   opacity: 0;
-  transform: translateY(32px);
+  transform: translateY(10px) scale(.97);
 }
 
 @keyframes shake {
@@ -59,5 +66,18 @@
 
   75% {
     transform: rotate(4deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
   }
 }

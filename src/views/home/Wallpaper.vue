@@ -1,16 +1,15 @@
 <template>
   <div
     id="wallpaper-image"
-    v-if="!isEmpty(background.url)"
-    :style="{ backgroundImage: `url(${background.url})` }"
+    v-if="!isEmpty(displayUrl)"
+    :style="{ backgroundImage: `url(${displayUrl})` }"
   >
     <div class="wallpaper-mask"></div>
   </div>
 </template>
 
 <script lang="ts" setup>
-import { computed } from "vue"
-import { verifyImageUrl } from "@/utils/img"
+import { computed, ref, watch } from "vue"
 import { BackgroundType, ThemeMode } from "@/types/setting"
 import { useSettingStore } from "@/store"
 import { isEmpty } from "@/utils/common"
@@ -18,6 +17,10 @@ import { storeToRefs } from "pinia"
 
 const settingStore = useSettingStore()
 const { background, currentTheme } = storeToRefs(settingStore)
+// A URL created by another tab becomes invalid when that tab closes.
+const localWallpaperUrl = ref<string | null>(null)
+const displayUrl = computed(() => background.value.type === BackgroundType.Local
+  ? localWallpaperUrl.value : background.value.url)
 
 // 遮罩不透明度
 const maskOpacity = computed(() => {
@@ -29,16 +32,23 @@ const maskOpacity = computed(() => {
     : maskOpacity
 })
 
-// 如果 URL无效则重新加载
-const verifyBackground = await verifyImageUrl(background.value.url!)
-if (!verifyBackground) {
-  await settingStore.reloadBackgroundImage()
-}
-
-// 加载Bing每日壁纸
-if (background.value.type === BackgroundType.Bing) {
-  await settingStore.loadBingDailyWallpaper()
-}
+// Compare scalar values so another tab's URL write or store hydration cannot echo reloads.
+watch([() => background.value.id, () => background.value.type], async ([, type], previous, onCleanup) => {
+  let active = true
+  onCleanup(() => { active = false })
+  try {
+    if (type === BackgroundType.Local) {
+      const url = await settingStore.reloadBackgroundImage()
+      if (active && url !== undefined) localWallpaperUrl.value = url
+    } else if (type === BackgroundType.Bing && type !== previous[1]) {
+      await settingStore.loadBingDailyWallpaper()
+    }
+  } catch (error) {
+    if (!active) return
+    if (type === BackgroundType.Local) localWallpaperUrl.value = null
+    console.warn("Unable to load wallpaper:", error)
+  }
+}, { immediate: true })
 </script>
 
 <style lang="less">
